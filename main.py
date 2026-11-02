@@ -3,6 +3,7 @@
 Ghost Protocol - 24/7 Telegram MTProxy Channel Poster Bot
 Framework: pyTelegramBotAPI (telebot) + Flask (Keep-Alive Server)
 Host Target: Render.com / GitHub / VPS
+Full Interactive Button Menu & Auto-Posting System
 Exclusively authorized for Admin ID: 6640701495
 """
 
@@ -18,196 +19,111 @@ import requests
 import telebot
 from telebot import types
 
-# ---------------------------------------------------------
-# Logging Configuration
-# ---------------------------------------------------------
 logging.basicConfig(
     format="%(asctime)s - [%(levelname)s] - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger("GhostProtocol")
 
-# ---------------------------------------------------------
-# Environment Variables & Strict Admin Security
-# ---------------------------------------------------------
+# Siziň parametrleriňiz
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8643237203:AAF5V_shvCNWoAyKBZkhnE8aOgQVTD8TVV0").strip()
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "").strip()
-# Strict Admin Security: Diňe sizde (6640701495) işlemeli
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6640701495").strip() or "6640701495")
 PORT = int(os.environ.get("PORT", 5000))
-
-# Render.com automatic external URL or fallback
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
-SELF_PING_URL = os.environ.get("SELF_PING_URL", "").strip()
 
-# Post content
 POST_TITLE = "Ghost Protocol MTProxy"
 POST_TEXT = "Используйте Telegram без VPN, нажмите кнопку (Connect)"
 
-# Track stats & states
 start_time = time.time()
 ping_counter = 0
 current_channel = CHANNEL_ID
-admin_states = {}
+pending_posts = {}
 
-# ---------------------------------------------------------
-# Flask Keep-Alive Web Server (Render.com 24/7 Uptime)
-# ---------------------------------------------------------
+# 1. Flask Keep-Alive Serveri
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    """Web browser we barlag üçin status sahypasy."""
     uptime_seconds = int(time.time() - start_time)
     hours, remainder = divmod(uptime_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
-    uptime_str = f"{hours}h {minutes}m {seconds}s"
-    
     return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Ghost Protocol Bot - 24/7 Online</title>
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #080c14; color: #10b981; padding: 40px; text-align: center; }}
-            .card {{ background: #0f172a; border: 1px solid #10b981; border-radius: 16px; padding: 30px; display: inline-block; max-width: 520px; box-shadow: 0 0 30px rgba(16,185,129,0.2); }}
-            h1 {{ margin: 0 0 15px 0; color: #34d399; font-size: 24px; }}
-            p {{ color: #94a3b8; font-size: 14px; margin: 8px 0; }}
-            .status {{ color: #10b981; font-weight: bold; }}
-            .badge {{ background: #064e3b; color: #6ee7b7; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: bold; }}
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h1>🛡️ Ghost Protocol Bot</h1>
-            <p><span class="badge">🟢 24/7 OÝA WE IŞLEÝÄR</span></p>
-            <p>Admin ID: <b>{ADMIN_ID} (Doly Goragly)</b></p>
-            <p>Kanal: <b>{current_channel if current_channel else "Sazlanmadyk (Telegramdan /setchannel ýazyň)"}</b></p>
-            <p>Iş wagty (Uptime): <b>{uptime_str}</b></p>
-            <p>Awtomatiki Oýaryjy Ping sany: <b>{ping_counter}</b></p>
-            <p style="margin-top:20px; font-size:12px; color:#64748b;">Keep-Alive Endpoint: <code>/healthz</code></p>
+    <html><body style="background:#080c14;color:#10b981;font-family:sans-serif;text-align:center;padding:50px;">
+        <div style="background:#0f172a;border:1px solid #10b981;border-radius:16px;padding:30px;display:inline-block;box-shadow:0 0 30px rgba(16,185,129,0.2);">
+            <h1 style="color:#34d399;">🛡️ Ghost Protocol Bot</h1>
+            <p style="color:#10b981;font-weight:bold;">🟢 24/7 OÝA WE IŞLEÝÄR (BUTTON SYSTEM)</p>
+            <p style="color:#94a3b8;">Admin ID: <b>{ADMIN_ID}</b></p>
+            <p style="color:#94a3b8;">Kanal: <b>{current_channel or 'Sazlanmadyk'}</b></p>
+            <p style="color:#94a3b8;">Uptime: <b>{hours}h {minutes}m {seconds}s</b></p>
+            <p style="color:#94a3b8;">Auto-Ping: <b>{ping_counter} gezek</b></p>
         </div>
-    </body>
-    </html>
+    </body></html>
     """, 200
 
 @app.route("/healthz")
 def healthz():
-    """Lightweight 200 OK endpoint for internal/external keep-alive."""
     return jsonify({
         "status": "healthy",
         "service": "Ghost Protocol MTProxy Bot",
         "admin_id": ADMIN_ID,
-        "uptime_seconds": int(time.time() - start_time),
+        "uptime": int(time.time() - start_time),
         "channel": current_channel,
         "self_pings": ping_counter
     }), 200
 
 def start_flask():
-    """Flask web serverini arka fonda daemons hökmünde işletmek."""
-    logger.info(f"Flask Keep-Alive web serveri 0.0.0.0:{PORT} salgysynda işe girizildi.")
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-# ---------------------------------------------------------
-# Awtomatiki Oýaryjy (Self-Ping / Anti-Sleep Thread)
-# Render.com serweriniň 15 minutda uka gitmegini doly aradan aýyrýar!
-# ---------------------------------------------------------
+# 2. Render-i Uka Gitmez Ýaly Edýän Awtomatiki Oýaryjy
 def auto_keep_alive_pinger():
-    """
-    Her 4-5 minutdan Render web serwerine HTTP haýyş ugradyp,
-    serweri 24/7 gije-gündüz oýa saklaýar.
-    """
     global ping_counter
-    time.sleep(20)
-    logger.info("Awtomatiki oýaryjy (Self-Pinger) işe başlady.")
-
+    time.sleep(15)
     while True:
         try:
-            target_urls = []
-            
-            # 1. Render-iň öz berýän public web salgysy
+            urls = []
             if RENDER_EXTERNAL_URL:
-                target_urls.append(f"{RENDER_EXTERNAL_URL.rstrip('/')}/healthz")
-            if SELF_PING_URL:
-                target_urls.append(f"{SELF_PING_URL.rstrip('/')}/healthz")
-                
-            # 2. Localhost barlagy
-            target_urls.append(f"http://127.0.0.1:{PORT}/healthz")
+                urls.append(f"{RENDER_EXTERNAL_URL.rstrip('/')}/healthz")
+            urls.append(f"http://127.0.0.1:{PORT}/healthz")
 
-            for url in target_urls:
+            for u in urls:
                 try:
-                    res = requests.get(url, timeout=10)
+                    res = requests.get(u, timeout=10)
                     if res.status_code == 200:
                         ping_counter += 1
-                        logger.info(f"[Keep-Alive] Serwer oýaryldy: {url} -> 200 OK (Jemi: {ping_counter})")
                         break
-                except Exception as ping_err:
-                    logger.debug(f"Ping haýyşy başa barmady: {url} ({ping_err})")
-
+                except Exception:
+                    pass
         except Exception as e:
-            logger.error(f"Awtomatiki oýaryjy säwligi: {e}")
-
-        # Her 4 minutdan (240 sekunt) gaýtadan oýarýar
+            logger.error(f"Oýaryjy säwligi: {e}")
         time.sleep(240)
 
-# ---------------------------------------------------------
-# Universal MTProxy Parser (Islendik Formatdaky Linki Tanaýar)
-# ---------------------------------------------------------
+# 3. Universal MTProxy Parser
 def parse_mtproxy_links(text: str) -> list[str]:
-    """
-    Islendik formatdaky MTProxy linklerini derrew saýlap alýar:
-      - https://t.me/proxy?server=...&port=...&secret=...
-      - tg://proxy?server=...&port=...&secret=...
-      - Göni IP:PORT:SECRET (mysal: 185.123.45.67:443:ee0000...)
-    """
     valid_links = []
-    
-    # 1. URL formatlary (https://t.me/proxy ýa-da tg://proxy)
-    url_pattern = re.compile(r'(?:https?://t.me/proxy?[^\s\<\>"\']+|tg://proxy?[^\s\<\>"\']+)', re.IGNORECASE)
-    found_urls = url_pattern.findall(text)
-    
-    for url in found_urls:
+    url_pattern = re.compile(r'(?:https?://t\.me/proxy\?[^\s\<\>"\']+|tg://proxy\?[^\s\<\>"\']+)', re.IGNORECASE)
+    for url in url_pattern.findall(text):
         clean_url = url.replace("tg://proxy?", "https://t.me/proxy?")
         parsed = urlparse(clean_url)
         params = parse_qs(parsed.query)
-        
-        server = params.get("server", [""])[0]
-        port = params.get("port", [""])[0]
-        secret = params.get("secret", [""])[0]
-        
-        if server and port and secret:
-            normalized = f"https://t.me/proxy?server={server}&port={port}&secret={secret}"
-            if normalized not in valid_links:
-                valid_links.append(normalized)
+        s, p, sec = params.get("server", [""])[0], params.get("port", [""])[0], params.get("secret", [""])[0]
+        if s and p and sec:
+            norm = f"https://t.me/proxy?server={s}&port={p}&secret={sec}"
+            if norm not in valid_links:
+                valid_links.append(norm)
 
-    # 2. Göni IP:PORT:SECRET formaty
-    raw_pattern = re.compile(
-        r'(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b):(\d{2,5}):([a-fA-F0-9]{32,64}|ee[a-fA-F0-9]+|dd[a-fA-F0-9]+)',
-        re.IGNORECASE
-    )
-    found_raw = raw_pattern.findall(text)
-    for server, port, secret in found_raw:
-        normalized = f"https://t.me/proxy?server={server}&port={port}&secret={secret}"
-        if normalized not in valid_links:
-            valid_links.append(normalized)
+    raw_pattern = re.compile(r'(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b):(\d{2,5}):([a-fA-F0-9]{32,64}|ee[a-fA-F0-9]+|dd[a-fA-F0-9]+)', re.IGNORECASE)
+    for s, p, sec in raw_pattern.findall(text):
+        norm = f"https://t.me/proxy?server={s}&port={p}&secret={sec}"
+        if norm not in valid_links:
+            valid_links.append(norm)
 
     return valid_links
 
-def build_inline_keyboard(links: list[str]) -> types.InlineKeyboardMarkup:
-    """
-    Siz näçe link ugratsaňyz (1, 2, 3, 4, 6 ýa-da islendik mukdarda),
-    şonça 'Connect ↗' düwmelerini owadan 2 sütünli tertipde döredýär.
-    """
+def build_channel_keyboard(links: list[str]) -> types.InlineKeyboardMarkup:
     markup = types.InlineKeyboardMarkup()
     count = len(links)
-    
-    buttons = []
-    for i, link in enumerate(links, start=1):
-        btn_text = f"Connect {i} ↗" if count > 1 else "Connect ↗"
-        btn = types.InlineKeyboardButton(text=btn_text, url=link)
-        buttons.append(btn)
-    
-    # 2 sütünli tertip
+    buttons = [types.InlineKeyboardButton(text=f"Connect {i} ↗" if count > 1 else "Connect ↗", url=l) for i, l in enumerate(links, 1)]
     if count == 1:
         markup.add(buttons[0])
     elif count % 2 == 0:
@@ -217,56 +133,54 @@ def build_inline_keyboard(links: list[str]) -> types.InlineKeyboardMarkup:
         for i in range(0, count - 1, 2):
             markup.row(buttons[i], buttons[i + 1])
         markup.add(buttons[-1])
-        
     return markup
 
-# ---------------------------------------------------------
-# Telebot Setup & Strict Admin Authorization
-# ---------------------------------------------------------
+# 4. Hemişelik Ekranda Durýan Taýyn Düwmeler Menýusy
+def get_main_menu_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(types.KeyboardButton("📢 Kanala Post Ibermek"), types.KeyboardButton("⚡ Tizlik (Ping)"))
+    markup.add(types.KeyboardButton("⚙️ Kanaly Sazlamak"), types.KeyboardButton("📊 24/7 Status"))
+    markup.add(types.KeyboardButton("ℹ️ Gollanma"))
+    return markup
+
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-def check_admin(message: types.Message) -> bool:
-    """
-    HOWPSUZLYK TALABY:
-    Bot diňe we diňe siziň Telegram ID-iňizde (6640701495) işlemeli.
-    Başga hiç kim bota girip ýa-da buýruk berip bilmeýär!
-    """
-    if message.from_user.id != ADMIN_ID:
-        logger.warning(f"Röwhusyz giriş synanyşygy: User ID={message.from_user.id}")
-        bot.reply_to(
-            message,
-            "⛔ <b>Giriş gadagan edildi!</b>\nBu bot hususy we diňe bellenen administratoryň özi üçin goralandyr."
-        )
+def check_admin(message_or_query) -> bool:
+    user_id = message_or_query.from_user.id
+    if user_id != ADMIN_ID:
+        if isinstance(message_or_query, types.CallbackQuery):
+            bot.answer_callback_query(message_or_query.id, "⛔ Giriş gadagan!", show_alert=True)
+        else:
+            bot.reply_to(message_or_query, "⛔ <b>Giriş gadagan edildi!</b> Bu bot diňe administratoryň özi üçin goralandyr.")
         return False
     return True
 
-# ---------------------------------------------------------
-# Bot Handlerleri
-# ---------------------------------------------------------
-@bot.message_handler(commands=["start", "help"])
-def send_welcome(message: types.Message):
+try:
+    bot.set_my_commands([
+        types.BotCommand("start", "Baş menýuny we düwmeleri açmak"),
+        types.BotCommand("post", "Kanala MTProxy postuny ugratmak"),
+        types.BotCommand("setchannel", "Post iberiljek kanaly sazlamak"),
+        types.BotCommand("status", "24/7 iş wagty we serwer ýagdaýy"),
+        types.BotCommand("ping", "Botuň jogap tizligini barlamak"),
+    ])
+except Exception:
+    pass
+
+@bot.message_handler(commands=["start", "menu"])
+def cmd_start(message: types.Message):
     if not check_admin(message):
         return
-
     welcome_text = (
-        "🛡️ <b>Salam, Ghost Protocol Hoş Geldiňiz!</b>\n\n"
-        "Bot doly goralan we diňe siziň Telegram ID-iňizde (<code>6640701495</code>) işleýär.\n"
-        "Render.com-da 24/7 uka gitmezlik üçin awtomatiki oýaryjy gurlan.\n\n"
+        "🛡️ <b>Ghost Protocol Dolandyryş Paneli</b>\n\n"
+        "Aşakdaky taýyn düwmeler arkaly ähli amallary <b>1 basyşda</b> ýerine ýetirip bilersiňiz!\n\n"
         f"📢 <b>Häzirki Kanal:</b> <code>{current_channel or 'Sazlanmadyk'}</code>\n"
-        f"⚡ <b>Ýagdaýy:</b> 7/24 Aktiw, duýgur jogap bermäge taýýar!\n\n"
-        "<b>Esasy Buýruklar:</b>\n"
-        "• <code>/post</code> - Täze MTProxy postyny taýýarlamak\n"
-        "• <code>/setchannel @kanal</code> - Post iberiljek kanaly sazlamak\n"
-        "• <code>/status</code> - 24/7 iş wagty we awtomatiki oýaryjyny görmek\n"
-        "• <code>/ping</code> - Botuň tizligini we oýalygyny barlamak\n"
-        "• <code>/cancel</code> - Häzirki amaly ýatyrmak\n\n"
-        "💡 <b>Tiz usul:</b> Islendik formatdaky MTProxy linkleriňizi göni şu bota ugratsaňyz, "
-        "bot olary derrew tanaýar we Connect düwmeleri bilen kanala paýlaşmaga taýýarlaýar!"
+        f"👤 <b>Admin ID:</b> <code>{ADMIN_ID}</code> (Doly Goralan)\n"
+        "⚡ <b>Ýagdaýy:</b> 7/48 Oýa, düwmä basan badyňyza jogap bermäge taýýar!"
     )
-    bot.reply_to(message, welcome_text)
+    bot.reply_to(message, welcome_text, reply_markup=get_main_menu_keyboard())
 
-@bot.message_handler(commands=["ping"])
-def ping_cmd(message: types.Message):
+@bot.message_handler(func=lambda msg: msg.text == "⚡ Tizlik (Ping)" or msg.text == "/ping")
+def handle_ping(message: types.Message):
     if not check_admin(message):
         return
     t0 = time.time()
@@ -275,179 +189,148 @@ def ping_cmd(message: types.Message):
     bot.edit_message_text(
         chat_id=message.chat.id,
         message_id=msg.message_id,
-        text=f"⚡ <b>Bot Oýa we Tiz Jogap Berýär!</b>\n\n• Jogap tizligi: <b>{dt} ms</b>\n• Status: 🟢 7/24 Durman Işleýär!",
+        text=f"⚡ <b>Bot Oýa we Tiz Jogap Berýär!</b>\n\n• Jogap tizligi: <b>{dt} ms</b>\n• Ýagdaýy: 🟢 7/48 Durman Işleýär!",
         parse_mode="HTML"
     )
 
-@bot.message_handler(commands=["status"])
-def check_status(message: types.Message):
+@bot.message_handler(func=lambda msg: msg.text == "📊 24/7 Status" or msg.text == "/status")
+def handle_status(message: types.Message):
     if not check_admin(message):
         return
-    
     uptime = int(time.time() - start_time)
     h, rem = divmod(uptime, 3600)
     m, s = divmod(rem, 60)
-    
     bot.reply_to(
         message,
         f"🟢 <b>Ghost Protocol 24/7 Status</b>\n\n"
-        f"• <b>Admin:</b> <code>{ADMIN_ID}</code> (Diňe sizde işleýär)\n"
+        f"• <b>Admin:</b> <code>{ADMIN_ID}</code>\n"
         f"• <b>Iş wagty:</b> {h} sagat, {m} minut, {s} sekunt\n"
-        f"• <b>Awtomatiki Oýaryjy:</b> {ping_counter} gezek Render oýaryldy\n"
-        f"• <b>Web Server:</b> 0.0.0.0:{PORT} (/healthz)\n"
-        f"• <b>Birikdirilen Kanal:</b> <code>{current_channel or 'Sazlanmadyk (/setchannel @kanal)'}</code>"
+        f"• <b>Awtomatiki Oýaryjy:</b> {ping_counter} gezek oýaryldy\n"
+        f"• <b>Kanal:</b> <code>{current_channel or 'Sazlanmadyk (/setchannel)'}</code>",
+        reply_markup=get_main_menu_keyboard()
+    )
+
+@bot.message_handler(func=lambda msg: msg.text == "⚙️ Kanaly Sazlamak")
+def handle_channel_menu(message: types.Message):
+    if not check_admin(message):
+        return
+    bot.reply_to(
+        message,
+        f"📢 <b>Kanal Sazlamalary</b>\n\nHäzirki bellenen kanal: <code>{current_channel or 'Sazlanmadyk'}</code>\n\n"
+        "Kanaly üýtgetmek üçin şu buýrugy ýazyň:\n👉 <code>/setchannel @sizin_kanalyňyz</code>",
+        reply_markup=get_main_menu_keyboard()
     )
 
 @bot.message_handler(commands=["setchannel"])
-def set_channel(message: types.Message):
+def cmd_set_channel(message: types.Message):
     global current_channel
     if not check_admin(message):
         return
-
     parts = message.text.strip().split(maxsplit=1)
     if len(parts) < 2:
-        bot.reply_to(
-            message,
-            "⚠️ <b>Kanal salgysyny görkeziň!</b>\n\n"
-            "Mysal üçin:\n<code>/setchannel @sizin_kanalyňyz</code>\n"
-            "ýa-da ýapyk kanal üçin ID: <code>/setchannel -1001234567890</code>"
-        )
+        bot.reply_to(message, "⚠️ Mysal: <code>/setchannel @sizin_kanalyňyz</code>")
         return
+    current_channel = parts[1].strip()
+    bot.reply_to(message, f"✅ <b>Kanal üstünlikli bellenildi:</b> <code>{current_channel}</code>", reply_markup=get_main_menu_keyboard())
 
-    new_ch = parts[1].strip()
-    current_channel = new_ch
-    bot.reply_to(
-        message,
-        f"✅ <b>Kanal üstünlikli bellenildi:</b> <code>{current_channel}</code>\n\n"
-        "<i>Bellik: Botuň bu kanalda Administrator bolandygyny we 'Post Messages' ygtyýarlylygynyň barlygyny barlaň!</i>"
-    )
-
-@bot.message_handler(commands=["cancel"])
-def cancel_process(message: types.Message):
+@bot.message_handler(func=lambda msg: msg.text == "ℹ️ Gollanma")
+def handle_help(message: types.Message):
     if not check_admin(message):
         return
-    if message.from_user.id in admin_states:
-        del admin_states[message.from_user.id]
-    bot.reply_to(message, "✅ Amal ýatyryldy.")
-
-@bot.message_handler(commands=["post"])
-def initiate_post(message: types.Message):
-    if not check_admin(message):
-        return
-
-    admin_states[message.from_user.id] = {"action": "waiting_proxies"}
     bot.reply_to(
         message,
-        "📥 <b>MTProxy linkleriňizi ugradyň:</b>\n\n"
-        "Siz linkleri islendik formatda ugradyp bilersiňiz:\n"
-        "• <code>https://t.me/proxy?server=...&port=...&secret=...</code>\n"
-        "• <code>tg://proxy?server=...&port=...&secret=...</code>\n"
-        "• Göni <code>IP:PORT:SECRET</code>\n"
-        "• Ýa-da birnäçe linki bulaşyk tekst bilen bilelikde.\n\n"
-        "<i>(Ýatyrmak üçin /cancel ýazyň)</i>"
+        "ℹ️ <b>Nädip Ulanmaly?</b>\n\n"
+        "1. MTProxy linkleriňizi şu söhbete ugradyň.\n"
+        "2. Bot aşagynda <b>'🚀 Kanala Göni Ugrat'</b> düwmesini çykarar.\n"
+        "3. Şol düwmä basan badyňyza post suraty we düwmeleri bilen kanala paýlaşylar!",
+        reply_markup=get_main_menu_keyboard()
     )
 
+@bot.message_handler(func=lambda msg: msg.text == "📢 Kanala Post Ibermek" or msg.text == "/post")
+def handle_post_prompt(message: types.Message):
+    if not check_admin(message):
+        return
+    bot.reply_to(message, "📥 <b>MTProxy linkleriňizi şu ýere ugradyň:</b>", reply_markup=get_main_menu_keyboard())
+
+# Linkleri kabul etmek we 1 basyşda tassyklatmak
 @bot.message_handler(func=lambda msg: True, content_types=["text"])
-def handle_text_proxies(message: types.Message):
+def handle_any_text(message: types.Message):
     if not check_admin(message):
         return
-
     text = message.text.strip()
     links = parse_mtproxy_links(text)
 
     if not links:
-        if admin_states.get(message.from_user.id, {}).get("action") == "waiting_proxies":
-            bot.reply_to(
-                message,
-                "⚠️ <b>Hiç hili dogry MTProxy tapylmady!</b>\n"
-                "Haýyş edýäris, linkiňizde <code>server</code>, <code>port</code> we <code>secret</code> barlygyny barlaň."
-            )
+        bot.reply_to(message, "⚠️ <b>Hiç hili MTProxy tapylmady!</b>\nLinkiňizde server, port we secret barlygyny barlaň.", reply_markup=get_main_menu_keyboard())
         return
 
-    keyboard = build_inline_keyboard(links)
-    caption = f"<b>{POST_TITLE}</b>\n\n{POST_TEXT}"
+    user_id = message.from_user.id
+    pending_posts[user_id] = links
 
-    target = current_channel or CHANNEL_ID
-    if not target:
-        bot.reply_to(
-            message,
-            f"✅ <b>{len(links)} sany MTProxy tapyldy!</b>\n\n"
-            "⚠️ Emma post iberiljek kanal entek sazlanmandyr.\n"
-            "Kanal bellemek üçin şu buýrugy ýazyň: <code>/setchannel @sizin_kanalyňyz</code>\n\n"
-            "Aşakda postuňyz üçin Connect düwmeleriniň syny (Preview):",
-            reply_markup=keyboard
-        )
+    confirm_markup = types.InlineKeyboardMarkup()
+    confirm_markup.row(
+        types.InlineKeyboardButton("🚀 Kanala Göni Ugrat", callback_data="do_post_channel"),
+        types.InlineKeyboardButton("❌ Ýatyr", callback_data="do_cancel_post")
+    )
+
+    channel_display = current_channel or CHANNEL_ID or "Bellenmedik (/setchannel)"
+    bot.reply_to(
+        message,
+        f"✅ <b>{len(links)} sany MTProxy üstünlikli tapyldy!</b>\n\n"
+        f"📢 <b>Kanal:</b> <code>{channel_display}</code>\n"
+        f" Düwmeler: <b>Connect 1 ↗ .. Connect {len(links)} ↗</b>\n\n"
+        "Posty paýlaşmak üçin aşakdaky düwmä basyň:",
+        reply_markup=confirm_markup
+    )
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call: types.CallbackQuery):
+    if not check_admin(call):
+        return
+    user_id = call.from_user.id
+
+    if call.data == "do_cancel_post":
+        if user_id in pending_posts:
+            del pending_posts[user_id]
+        bot.edit_message_text("❌ <b>Post ugratmak ýatyryldy.</b>", chat_id=call.message.chat.id, message_id=call.message.message_id)
+        bot.answer_callback_query(call.id, "Ýatyryldy")
         return
 
-    # Posty kanala ugratmak
-    try:
-        logo_path = os.path.join(os.path.dirname(__file__), "ghost_profile_logo.jpg")
-        
-        if os.path.exists(logo_path):
-            with open(logo_path, "rb") as photo:
-                bot.send_photo(
-                    chat_id=target,
-                    photo=photo,
-                    caption=caption,
-                    reply_markup=keyboard,
-                    parse_mode="HTML"
-                )
-        else:
-            bot.send_message(
-                chat_id=target,
-                text=caption,
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
+    if call.data == "do_post_channel":
+        links = pending_posts.get(user_id, [])
+        if not links:
+            bot.answer_callback_query(call.id, "⚠️ Linkler tapylmady!", show_alert=True)
+            return
+        target = current_channel or CHANNEL_ID
+        if not target:
+            bot.answer_callback_query(call.id, "⚠️ Ilki /setchannel @kanalyňyz ýazyň!", show_alert=True)
+            return
 
-        bot.reply_to(
-            message,
-            f"🚀 <b>Post üstünlikli kanala ugradyldy!</b>\n\n"
-            f"• Kanal: <code>{target}</code>\n"
-            f"• Goşulan Connect düwmeleri: <b>{len(links)} sany</b>",
-            reply_markup=keyboard
-        )
-        if message.from_user.id in admin_states:
-            del admin_states[message.from_user.id]
+        keyboard = build_channel_keyboard(links)
+        caption = f"<b>{POST_TITLE}</b>\n\n{POST_TEXT}"
 
-    except Exception as e:
-        logger.error(f"Kanala post ibermekde säwlik: {e}")
-        bot.reply_to(
-            message,
-            f"❌ <b>Post ugradyp bolmady!</b>\n\n"
-            f"Säwlik jikme-jigi: <code>{e}</code>\n\n"
-            "<b>Näme etmeli?</b>\n"
-            "1. Botuňyz hökman kanalda <b>Administrator</b> bolmaly.\n"
-            "2. Botuň 'Post Messages' (Habar paýlaşmak) ygtyýarlylygynyň barlygyny barlaň.\n"
-            f"3. Eger kanal ady ýalňyş bolsa, <code>/setchannel @taze_kanal</code> ýazyň."
-        )
+        try:
+            logo_path = os.path.join(os.path.dirname(__file__), "ghost_profile_logo.jpg")
+            if os.path.exists(logo_path):
+                with open(logo_path, "rb") as photo:
+                    bot.send_photo(chat_id=target, photo=photo, caption=caption, reply_markup=keyboard, parse_mode="HTML")
+            else:
+                bot.send_message(chat_id=target, text=caption, reply_markup=keyboard, parse_mode="HTML")
 
-# ---------------------------------------------------------
-# Esasy Programmanyň Başlangyjy
-# ---------------------------------------------------------
+            bot.edit_message_text(f"🚀 <b>Post üstünlikli kanala ugradyldy!</b>\n\n• Kanal: <code>{target}</code>\n• Connect düwmeleri: <b>{len(links)} sany</b>", chat_id=call.message.chat.id, message_id=call.message.message_id)
+            bot.answer_callback_query(call.id, "🚀 Ugradyldy!")
+            del pending_posts[user_id]
+        except Exception as e:
+            bot.answer_callback_query(call.id, f"Säwlik: {e}", show_alert=True)
+            bot.send_message(call.message.chat.id, f"❌ <b>Post ugradyp bolmady:</b> <code>{e}</code>\n\n<i>Bellik: Botuň kanalyňyzda Administrator bolmagy hökmanydyr!</i>")
+
 def main():
-    logger.info(f"Ghost Protocol Bot taýýarlanýar... Admin ID: {ADMIN_ID}")
-
-    # 1. Flask Keep-Alive Web Serverini background thread-de başlatmak
-    flask_thread = threading.Thread(target=start_flask, daemon=True)
-    flask_thread.start()
-
-    # 2. Render 24/7 Awtomatiki Oýaryjyny (Self-Ping) background thread-de başlatmak
-    pinger_thread = threading.Thread(target=auto_keep_alive_pinger, daemon=True)
-    pinger_thread.start()
-
-    # 3. Telegram Bot Polling-iň çalt we duýgur tertipde işlemesi
-    logger.info("Telegram Bot Polling (infinity_polling) işe girizilýär...")
+    threading.Thread(target=start_flask, daemon=True).start()
+    threading.Thread(target=auto_keep_alive_pinger, daemon=True).start()
     while True:
         try:
-            bot.infinity_polling(
-                timeout=10,
-                long_polling_timeout=10,
-                skip_pending=True,
-                allowed_updates=["message", "callback_query"]
-            )
-        except Exception as exc:
-            logger.error(f"Polling säwligi: {exc}. 5 sekuntdan gaýtadan barlanýar...")
+            bot.infinity_polling(timeout=10, long_polling_timeout=10, skip_pending=True)
+        except Exception:
             time.sleep(5)
 
 if __name__ == "__main__":
