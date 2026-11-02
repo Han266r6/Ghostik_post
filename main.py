@@ -3,7 +3,10 @@
 Ghost Protocol - 24/7 Telegram MTProxy Channel Poster Bot
 Framework: pyTelegramBotAPI (telebot) + Flask (Keep-Alive Server)
 Host Target: Render.com / GitHub / VPS
-Full Interactive Button Menu & Auto-Posting System
+High-End Design Matching Screenshot 2:
+  - 16:9 Compact Cinematic Wide Banner
+  - Rich Stylized Caption with Ornaments & Hashtags
+  - 3-Column Compact "Connect ↗" Buttons Grid
 Exclusively authorized for Admin ID: 6640701495
 """
 
@@ -25,22 +28,43 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GhostProtocol")
 
-# Siziň parametrleriňiz
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8643237203:AAF5V_shvCNWoAyKBZkhnE8aOgQVTD8TVV0").strip()
-CHANNEL_ID = os.environ.get("CHANNEL_ID", "").strip()
+DEFAULT_CHANNEL = "@ghost_protocolI"
+CHANNEL_ID = os.environ.get("CHANNEL_ID", DEFAULT_CHANNEL).strip() or DEFAULT_CHANNEL
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6640701495").strip() or "6640701495")
 PORT = int(os.environ.get("PORT", 5000))
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
 
-POST_TITLE = "Ghost Protocol MTProxy"
-POST_TEXT = "Используйте Telegram без VPN, нажмите кнопку (Connect)"
-
 start_time = time.time()
 ping_counter = 0
-current_channel = CHANNEL_ID
+
+def normalize_channel(raw_input: str) -> str:
+    if not raw_input:
+        return DEFAULT_CHANNEL
+    s = raw_input.strip()
+    if "t.me/" in s:
+        s = s.split("t.me/")[-1].split("/")[0].split("?")[0]
+    s = s.strip()
+    if s.startswith("-100") or (s.startswith("-") and s[1:].isdigit()):
+        return s
+    s = s.lstrip("@").strip()
+    return f"@{s}"
+
+current_channel = normalize_channel(CHANNEL_ID)
 pending_posts = {}
 
-# 1. Flask Keep-Alive Serveri
+# 2-nji Suratdaky Ýaly Nagşly we Hestegli Mazmun
+def generate_channel_caption(channel: str) -> str:
+    return (
+        "<b>Используйте Telegram без VPN, нажмите кнопку (connect)</b>\n"
+        "════════ ◖⚚◗ ════════\n"
+        f"💎 <b>{channel}</b>\n"
+        "════════ ◖⚚◗ ════════\n"
+        "🥇 <i>Самый быстрый канал прокси в Туркменистане</i>\n\n"
+        "#ghostprotocol #proxy #freeproxy\n"
+        "#mtproxy #socks5 #vpn #turkmenistan"
+    )
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -52,9 +76,9 @@ def index():
     <html><body style="background:#080c14;color:#10b981;font-family:sans-serif;text-align:center;padding:50px;">
         <div style="background:#0f172a;border:1px solid #10b981;border-radius:16px;padding:30px;display:inline-block;box-shadow:0 0 30px rgba(16,185,129,0.2);">
             <h1 style="color:#34d399;">🛡️ Ghost Protocol Bot</h1>
-            <p style="color:#10b981;font-weight:bold;">🟢 24/7 OÝA WE IŞLEÝÄR (BUTTON SYSTEM)</p>
+            <p style="color:#10b981;font-weight:bold;">🟢 24/7 OÝA WE IŞLEÝÄR (PRO DESIGN)</p>
             <p style="color:#94a3b8;">Admin ID: <b>{ADMIN_ID}</b></p>
-            <p style="color:#94a3b8;">Kanal: <b>{current_channel or 'Sazlanmadyk'}</b></p>
+            <p style="color:#94a3b8;">Kanal: <b>{current_channel}</b></p>
             <p style="color:#94a3b8;">Uptime: <b>{hours}h {minutes}m {seconds}s</b></p>
             <p style="color:#94a3b8;">Auto-Ping: <b>{ping_counter} gezek</b></p>
         </div>
@@ -75,7 +99,6 @@ def healthz():
 def start_flask():
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
-# 2. Render-i Uka Gitmez Ýaly Edýän Awtomatiki Oýaryjy
 def auto_keep_alive_pinger():
     global ping_counter
     time.sleep(15)
@@ -98,7 +121,6 @@ def auto_keep_alive_pinger():
             logger.error(f"Oýaryjy säwligi: {e}")
         time.sleep(240)
 
-# 3. Universal MTProxy Parser
 def parse_mtproxy_links(text: str) -> list[str]:
     valid_links = []
     url_pattern = re.compile(r'(?:https?://t\.me/proxy\?[^\s\<\>"\']+|tg://proxy\?[^\s\<\>"\']+)', re.IGNORECASE)
@@ -120,22 +142,18 @@ def parse_mtproxy_links(text: str) -> list[str]:
 
     return valid_links
 
+# 2-nji Suratdaky Ýaly 3 Sütünli Connect Düwmeleri
 def build_channel_keyboard(links: list[str]) -> types.InlineKeyboardMarkup:
     markup = types.InlineKeyboardMarkup()
     count = len(links)
-    buttons = [types.InlineKeyboardButton(text=f"Connect {i} ↗" if count > 1 else "Connect ↗", url=l) for i, l in enumerate(links, 1)]
-    if count == 1:
-        markup.add(buttons[0])
-    elif count % 2 == 0:
-        for i in range(0, count, 2):
-            markup.row(buttons[i], buttons[i + 1])
-    else:
-        for i in range(0, count - 1, 2):
-            markup.row(buttons[i], buttons[i + 1])
-        markup.add(buttons[-1])
+    row_size = 3 if count >= 3 else (2 if count == 2 else 1)
+    buttons = [types.InlineKeyboardButton(text="Connect ↗", url=l) for l in links]
+    
+    for i in range(0, count, row_size):
+        markup.row(*buttons[i:i + row_size])
+        
     return markup
 
-# 4. Hemişelik Ekranda Durýan Taýyn Düwmeler Menýusy
 def get_main_menu_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(types.KeyboardButton("📢 Kanala Post Ibermek"), types.KeyboardButton("⚡ Tizlik (Ping)"))
@@ -171,9 +189,9 @@ def cmd_start(message: types.Message):
     if not check_admin(message):
         return
     welcome_text = (
-        "🛡️ <b>Ghost Protocol Dolandyryş Paneli</b>\n\n"
+        "🛡️ <b>Ghost Protocol Dolandyryş Paneli (Pro Design)</b>\n\n"
         "Aşakdaky taýyn düwmeler arkaly ähli amallary <b>1 basyşda</b> ýerine ýetirip bilersiňiz!\n\n"
-        f"📢 <b>Häzirki Kanal:</b> <code>{current_channel or 'Sazlanmadyk'}</code>\n"
+        f"📢 <b>Häzirki Kanal:</b> <code>{current_channel}</code> (Taýýar)\n"
         f"👤 <b>Admin ID:</b> <code>{ADMIN_ID}</code> (Doly Goralan)\n"
         "⚡ <b>Ýagdaýy:</b> 7/48 Oýa, düwmä basan badyňyza jogap bermäge taýýar!"
     )
@@ -206,7 +224,7 @@ def handle_status(message: types.Message):
         f"• <b>Admin:</b> <code>{ADMIN_ID}</code>\n"
         f"• <b>Iş wagty:</b> {h} sagat, {m} minut, {s} sekunt\n"
         f"• <b>Awtomatiki Oýaryjy:</b> {ping_counter} gezek oýaryldy\n"
-        f"• <b>Kanal:</b> <code>{current_channel or 'Sazlanmadyk (/setchannel)'}</code>",
+        f"• <b>Birikdirilen Kanal:</b> <code>{current_channel}</code>",
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -216,8 +234,10 @@ def handle_channel_menu(message: types.Message):
         return
     bot.reply_to(
         message,
-        f"📢 <b>Kanal Sazlamalary</b>\n\nHäzirki bellenen kanal: <code>{current_channel or 'Sazlanmadyk'}</code>\n\n"
-        "Kanaly üýtgetmek üçin şu buýrugy ýazyň:\n👉 <code>/setchannel @sizin_kanalyňyz</code>",
+        f"📢 <b>Kanal Sazlamalary</b>\n\nHäzirki bellenen kanal: <code>{current_channel}</code>\n\n"
+        "Kanaly üýtgetmegiň 2 sany aňsat ýoly bar:\n"
+        "1. Kanalyňyzdan islendik bir posty göni şu bota <b>Forward (Переслать)</b> ediň.\n"
+        "2. Ýa-da buýruk ýazyň: <code>/setchannel @ghost_protocolI</code>",
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -228,10 +248,29 @@ def cmd_set_channel(message: types.Message):
         return
     parts = message.text.strip().split(maxsplit=1)
     if len(parts) < 2:
-        bot.reply_to(message, "⚠️ Mysal: <code>/setchannel @sizin_kanalyňyz</code>")
+        bot.reply_to(message, "⚠️ Mysal: <code>/setchannel @ghost_protocolI</code>")
         return
-    current_channel = parts[1].strip()
+    current_channel = normalize_channel(parts[1].strip())
     bot.reply_to(message, f"✅ <b>Kanal üstünlikli bellenildi:</b> <code>{current_channel}</code>", reply_markup=get_main_menu_keyboard())
+
+@bot.message_handler(func=lambda msg: msg.forward_from_chat is not None)
+def handle_forwarded_post(message: types.Message):
+    global current_channel
+    if not check_admin(message):
+        return
+    chat = message.forward_from_chat
+    if chat.username:
+        current_channel = f"@{chat.username}"
+    else:
+        current_channel = str(chat.id)
+    bot.reply_to(
+        message,
+        f"🎉 <b>Kanal derrew tanaldy we bellenildi!</b>\n\n"
+        f"• Ady: <b>{chat.title}</b>\n"
+        f"• Salgysy: <code>{current_channel}</code>\n\n"
+        "Indi ugradýan MTProxy postlaryňyz göni şu kanala iberiler!",
+        reply_markup=get_main_menu_keyboard()
+    )
 
 @bot.message_handler(func=lambda msg: msg.text == "ℹ️ Gollanma")
 def handle_help(message: types.Message):
@@ -241,8 +280,8 @@ def handle_help(message: types.Message):
         message,
         "ℹ️ <b>Nädip Ulanmaly?</b>\n\n"
         "1. MTProxy linkleriňizi şu söhbete ugradyň.\n"
-        "2. Bot aşagynda <b>'🚀 Kanala Göni Ugrat'</b> düwmesini çykarar.\n"
-        "3. Şol düwmä basan badyňyza post suraty we düwmeleri bilen kanala paýlaşylar!",
+        "2. Bot aşagynda <b>'🚀 Kanala Göni Ugrat'</b> düwmesini berer.\n"
+        "3. Basan badyňyza 16:9 owadan banner, hestegler we 3 sütünli Connect düwmeleri bilen kanala paýlaşylar!",
         reply_markup=get_main_menu_keyboard()
     )
 
@@ -252,7 +291,6 @@ def handle_post_prompt(message: types.Message):
         return
     bot.reply_to(message, "📥 <b>MTProxy linkleriňizi şu ýere ugradyň:</b>", reply_markup=get_main_menu_keyboard())
 
-# Linkleri kabul etmek we 1 basyşda tassyklatmak
 @bot.message_handler(func=lambda msg: True, content_types=["text"])
 def handle_any_text(message: types.Message):
     if not check_admin(message):
@@ -273,13 +311,12 @@ def handle_any_text(message: types.Message):
         types.InlineKeyboardButton("❌ Ýatyr", callback_data="do_cancel_post")
     )
 
-    channel_display = current_channel or CHANNEL_ID or "Bellenmedik (/setchannel)"
     bot.reply_to(
         message,
         f"✅ <b>{len(links)} sany MTProxy üstünlikli tapyldy!</b>\n\n"
-        f"📢 <b>Kanal:</b> <code>{channel_display}</code>\n"
-        f" Düwmeler: <b>Connect 1 ↗ .. Connect {len(links)} ↗</b>\n\n"
-        "Posty paýlaşmak üçin aşakdaky düwmä basyň:",
+        f"📢 <b>Ugradyljak Kanal:</b> <code>{current_channel}</code>\n"
+        f" Düwmeler: <b>Connect ↗ ({len(links)} sany, 3 sütünli)</b>\n\n"
+        "Posty kanala paýlaşmak üçin aşakdaky düwmä basyň:",
         reply_markup=confirm_markup
     )
 
@@ -301,28 +338,47 @@ def handle_callback(call: types.CallbackQuery):
         if not links:
             bot.answer_callback_query(call.id, "⚠️ Linkler tapylmady!", show_alert=True)
             return
-        target = current_channel or CHANNEL_ID
-        if not target:
-            bot.answer_callback_query(call.id, "⚠️ Ilki /setchannel @kanalyňyz ýazyň!", show_alert=True)
-            return
 
+        target = normalize_channel(current_channel)
         keyboard = build_channel_keyboard(links)
-        caption = f"<b>{POST_TITLE}</b>\n\n{POST_TEXT}"
+        caption = generate_channel_caption(target)
+
+        # 16:9 ykjam we owadan kese banner
+        banner_path = os.path.join(os.path.dirname(__file__), "ghost_banner_wide.jpg")
+        if not os.path.exists(banner_path):
+            banner_path = os.path.join(os.path.dirname(__file__), "ghost_profile_logo.jpg")
 
         try:
-            logo_path = os.path.join(os.path.dirname(__file__), "ghost_profile_logo.jpg")
-            if os.path.exists(logo_path):
-                with open(logo_path, "rb") as photo:
-                    bot.send_photo(chat_id=target, photo=photo, caption=caption, reply_markup=keyboard, parse_mode="HTML")
+            if os.path.exists(banner_path):
+                with open(banner_path, "rb") as photo:
+                    bot.send_photo(
+                        chat_id=target,
+                        photo=photo,
+                        caption=caption,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
             else:
-                bot.send_message(chat_id=target, text=caption, reply_markup=keyboard, parse_mode="HTML")
+                bot.send_message(
+                    chat_id=target,
+                    text=caption,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
 
-            bot.edit_message_text(f"🚀 <b>Post üstünlikli kanala ugradyldy!</b>\n\n• Kanal: <code>{target}</code>\n• Connect düwmeleri: <b>{len(links)} sany</b>", chat_id=call.message.chat.id, message_id=call.message.message_id)
+            bot.edit_message_text(
+                f"🚀 <b>Post üstünlikli kanala ugradyldy!</b>\n\n"
+                f"• Kanal: <code>{target}</code>\n"
+                f"• Goşulan Connect düwmeleri: <b>{len(links)} sany (3 sütün)</b>",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id
+            )
             bot.answer_callback_query(call.id, "🚀 Ugradyldy!")
             del pending_posts[user_id]
+
         except Exception as e:
             bot.answer_callback_query(call.id, f"Säwlik: {e}", show_alert=True)
-            bot.send_message(call.message.chat.id, f"❌ <b>Post ugradyp bolmady:</b> <code>{e}</code>\n\n<i>Bellik: Botuň kanalyňyzda Administrator bolmagy hökmanydyr!</i>")
+            bot.send_message(call.message.chat.id, f"❌ <b>Post ugradyp bolmady:</b> <code>{e}</code>")
 
 def main():
     threading.Thread(target=start_flask, daemon=True).start()
