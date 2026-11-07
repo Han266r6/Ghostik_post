@@ -294,20 +294,28 @@ def auto_keep_alive_pinger():
             logger.error(f"Oýaryjy säwligi: {e}")
         time.sleep(240)
 
+# ---------------------------------------------------------
+# Universal MTProxy Parser (100% Ýalňyşsyz Safe Regex)
+# ---------------------------------------------------------
 def parse_mtproxy_links(text: str) -> list[str]:
     valid_links = []
-    url_pattern = re.compile(r'(?:https?://t\.me/proxy\?[^\s\<\>\"']+|tg://proxy\?[^\s\<\>\"']+)', re.IGNORECASE)
-    for url in url_pattern.findall(text):
-        clean_url = url.replace("tg://proxy?", "https://t.me/proxy?")
+    # 1. Telegram Proxy URLs (https://t.me/proxy?... or tg://proxy?...)
+    url_pattern = re.compile(r'(?:https?://t\.me/proxy\?|tg://proxy\?)\S+', re.IGNORECASE)
+    for raw in url_pattern.findall(text):
+        clean_url = re.sub(r'[\s"\'<>()\[\],;].*$', '', raw)
+        clean_url = clean_url.replace("tg://proxy?", "https://t.me/proxy?")
         parsed = urlparse(clean_url)
         params = parse_qs(parsed.query)
-        s, p, sec = params.get("server", [""])[0], params.get("port", [""])[0], params.get("secret", [""])[0]
+        s = params.get("server", [""])[0]
+        p = params.get("port", [""])[0]
+        sec = params.get("secret", [""])[0]
         if s and p and sec:
             norm = f"https://t.me/proxy?server={s}&port={p}&secret={sec}"
             if norm not in valid_links:
                 valid_links.append(norm)
 
-    raw_pattern = re.compile(r'(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b):(\d{2,5}):([a-fA-F0-9]{32,64}|ee[a-fA-F0-9]+|dd[a-fA-F0-9]+)', re.IGNORECASE)
+    # 2. Raw IP:PORT:SECRET format
+    raw_pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5}):([a-fA-F0-9]{32,64}|ee[a-fA-F0-9]+|dd[a-fA-F0-9]+)', re.IGNORECASE)
     for s, p, sec in raw_pattern.findall(text):
         norm = f"https://t.me/proxy?server={s}&port={p}&secret={sec}"
         if norm not in valid_links:
@@ -315,6 +323,9 @@ def parse_mtproxy_links(text: str) -> list[str]:
 
     return valid_links
 
+# ---------------------------------------------------------
+# Modern Dynamic Connect Düwmeler Tertibi
+# ---------------------------------------------------------
 def build_channel_keyboard(links: list[str]) -> types.InlineKeyboardMarkup:
     cfg = load_post_config()
     b_style = cfg.get("button_style", "green_dot")
